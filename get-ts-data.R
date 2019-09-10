@@ -17,3 +17,18 @@ for (i in 1:length(urls)){
 }
 
 # read files ----------------------------------------------
+files <- list.files(path = 'data/')
+l <- lapply(paste0('data/', files), fread)  # this should be more elegant
+
+for (i in 1:length(l)){
+  print(i)
+  l[[i]]$year <- years[i]
+}
+
+dt <- rbindlist(l)
+
+# save raw dat
+saveRDS(dt, 'data/raw_data.RDS')
+
+
+# create ts by GEOID --------------------------------------
