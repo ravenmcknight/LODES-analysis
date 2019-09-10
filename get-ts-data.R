@@ -1,6 +1,9 @@
 # Goal: gather and clean LODES data 
 
 library(data.table)
+library(tigris)
+library(sf)
+library(dplyr)
 
 # download LODES files ------------------------------------
 years <- c('2002', '2003', '2004', '2005', '2006', '2007', '2008', '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016', '2017')
@@ -31,4 +34,19 @@ dt <- rbindlist(l)
 saveRDS(dt, 'data/raw_data.RDS')
 
 
-# create ts by GEOID --------------------------------------
+# cleaning ------------------------------------------------
+
+# restrict to metro area
+options(tigris_class = 'sf')
+counties <- c('Anoka', 'Hennepin', 'Ramsey', 'Carver', 'Washington', 'Scott', 'Sherburne', 'Wright', 'Dakota')
+bs <- blocks(state = 'MN', county = counties, year = 2016)
+
+dt$GEOID10 <- as.character(dt$w_geocode)
+dt_sf <- merge(bs, dt, by = 'GEOID10')
+
+# just dt zone
+# near target field
+tf <- dt_sf %>% 
+  filter(w_geocode == '270531261003001')
+
+tf
