@@ -39,7 +39,7 @@ for (i in 1:length(l)){
 dt <- rbindlist(l)
 
 # save raw dat
-#saveRDS(dt, 'data/raw_data.RDS')
+saveRDS(dt, 'data/raw_data.RDS')
 
 #dt <- readRDS('data/raw_data.RDS')
 
@@ -53,8 +53,8 @@ bs <- blocks(state = 'MN', county = counties, year = 2016)
 dt$GEOID10 <- as.character(dt$w_geocode)
 dt <- dt[GEOID10 %in% bs$GEOID10]
 
-#saveRDS(dt, 'data/metro_area_jobs.RDS')
-dt <- readRDS('data/metro_area_jobs.RDS')
+saveRDS(dt, 'data/metro_area_jobs.RDS')
+#dt <- readRDS('data/metro_area_jobs.RDS')
 
 # aggregate to block groups
 dt[, w_bg := substr(as.character(w_geocode), 1, 12)]
