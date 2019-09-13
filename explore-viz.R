@@ -7,6 +7,7 @@ library(sf)
 library(leaflet)
 library(dplyr)
 library(htmltools)
+library(rgdal)
 
 tot <- readRDS('data/tot_jobs.RDS')
 
@@ -67,11 +68,31 @@ summary(change_10_17$change)
 
 # visualizing origins -------------------------------------
 ods <- readRDS('data/od_jobs.RDS')
-# test with one bg
-dtw <- ods[year == 2017 & w_bg == '270531044002']
 
-empcounties <- c('Sherburne', 'Wright', 'Chisago', 'Isanti', 'Le Sueur', 'Mille Lacs', 'Sibley County')
-wicounties <- c('St. Croix', 'Pierce')
+dt <- st_bbox(c(xmin = -93.286377, ymin = 44.966869, xmax = -93.245903, ymax = 44.986271))
+dt <- st_as_sfc(dt, crs = 4326)
+st_crs(dt) <- 4326
+dt <- st_sf(dt)
+
+# this is so messy but best i have right now
+dtbg <- st_intersection(bgs, dt)
+dtbgs <- unique(dtbg$GEOID)
+dtbg <- bgs %>% filter(GEOID %in% dtbgs)
+
+# so for reference, this is what i'm using as broader downtown right now (kinda weird on top and right)
+# oh do i include or exclude augsburg?
+leaflet(dtbg) %>% addTiles() %>%
+  addPolygons(weight = 1, color = 'grey', fillOpacity = 0.7)
+
+# downtown workers in 2017
+dtw <- ods[year == 2017 & w_bg %in% dtbgs]
+dtw[, dtworkers := sum(workers), by = 'h_bg']
+
+empcounties <- c('Sherburne', 'Wright', 'Chisago', 'Isanti', 'Le Sueur', 'Mille Lacs', 
+                 'Sibley', 'Stearns', 'Meeker', 'Benton', 'McLeod', 'Morrison', 
+                 'Todd', 'Kanabec', 'Pine', 'Nicollet', 'Rice', 'Goodhue')
+wicounties <- c('St. Croix', 'Pierce', 'Pepin', 'Eau Clair', 'Dunn', 'Chippewa', 
+                'Polk', 'Barron', 'Burnett')
 
 empbg <- block_groups('MN', county = empcounties, year = 2016)
 wibg <- block_groups('WI', county = wicounties, year = 2016)
@@ -83,15 +104,28 @@ allbg <- rbind_tigris(empbg, wibg, bgs)
   
 dtw_origins <- left_join(allbg, dtw, by = c('GEOID' = 'h_bg'))
 
-
-originpal <- colorNumeric(palette = 'YlGnBu', domain = c(0, 5.4), na.color = 'transparent')
+originpal <- colorNumeric(palette = 'YlGnBu', domain = c(0, 7), na.color = 'transparent')
 originlab <- sprintf(
-  "<strong> %s </strong> workers in 2017",
-  dtw_origins$workers
+  "<strong> %s </strong> downtown workers in 2017",
+  dtw_origins$dtworkers
 ) %>% lapply(htmltools::HTML)
 
-leaflet(dtw_origins) %>% addTiles() %>%
-  addPolygons(weight = 1, color = 'grey', fillColor = ~originpal(log(workers)),
-              fillOpacity = 0.8, label = originlab)
+# p&r -----------------------
+prurl <- 'ftp://ftp.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_state_metc/trans_park_and_ride_lots/shp_trans_park_and_ride_lots.zip'
+loc <- file.path(tempdir(), 'pr.zip')
+download.file(prurl, loc)
+unzip(loc, exdir = file.path(tempdir(), 'pr'), overwrite = TRUE)
+file.remove(loc)
+pr <- readOGR(file.path(tempdir(), 'pr'), layer = 'ParkAndRideLots', stringsAsFactors = FALSE)
+pr <- st_as_sf(pr)
+pr <- st_transform(pr, 4326)
 
-# next step -- back up and get bgs for the whole dtz
+# active only
+pr <- pr %>% filter(Active == 1)
+
+leaflet(dtw_origins) %>% addTiles() %>%
+  addPolygons(weight = 1, color = 'grey', fillColor = ~originpal(log(dtworkers)),
+              fillOpacity = 0.7, label = originlab) %>%
+  addCircles(data = pr)
+
+# change? maybe 2010 - 2017
