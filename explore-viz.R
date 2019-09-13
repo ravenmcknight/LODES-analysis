@@ -88,11 +88,12 @@ leaflet(dtbg) %>% addTiles() %>%
 dtw <- ods[year == 2017 & w_bg %in% dtbgs]
 dtw[, dtworkers := sum(workers), by = 'h_bg']
 
+# maybe overboard but i want context for the p&rs
 empcounties <- c('Sherburne', 'Wright', 'Chisago', 'Isanti', 'Le Sueur', 'Mille Lacs', 
                  'Sibley', 'Stearns', 'Meeker', 'Benton', 'McLeod', 'Morrison', 
                  'Todd', 'Kanabec', 'Pine', 'Nicollet', 'Rice', 'Goodhue')
 wicounties <- c('St. Croix', 'Pierce', 'Pepin', 'Eau Clair', 'Dunn', 'Chippewa', 
-                'Polk', 'Barron', 'Burnett')
+                'Polk', 'Barron', 'Burnett', 'Buffalo', 'Trempealealu')
 
 empbg <- block_groups('MN', county = empcounties, year = 2016)
 wibg <- block_groups('WI', county = wicounties, year = 2016)
@@ -104,11 +105,6 @@ allbg <- rbind_tigris(empbg, wibg, bgs)
   
 dtw_origins <- left_join(allbg, dtw, by = c('GEOID' = 'h_bg'))
 
-originpal <- colorNumeric(palette = 'YlGnBu', domain = c(0, 7), na.color = 'transparent')
-originlab <- sprintf(
-  "<strong> %s </strong> downtown workers in 2017",
-  dtw_origins$dtworkers
-) %>% lapply(htmltools::HTML)
 
 # p&r -----------------------
 prurl <- 'ftp://ftp.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_state_metc/trans_park_and_ride_lots/shp_trans_park_and_ride_lots.zip'
@@ -123,9 +119,42 @@ pr <- st_transform(pr, 4326)
 # active only
 pr <- pr %>% filter(Active == 1)
 
+originpal <- colorNumeric(palette = 'YlGnBu', domain = c(0, 7), na.color = 'transparent')
+originlab <- sprintf(
+  "<strong> %s </strong> downtown workers in 2017",
+  dtw_origins$dtworkers
+) %>% lapply(htmltools::HTML)
+
+prlab <- sprintf(
+  "<strong> %s </strong> <br> %s",
+  pr$Name, pr$PrPlRec
+) %>% lapply(htmltools::HTML)
+
 leaflet(dtw_origins) %>% addTiles() %>%
   addPolygons(weight = 1, color = 'grey', fillColor = ~originpal(log(dtworkers)),
               fillOpacity = 0.7, label = originlab) %>%
-  addCircles(data = pr)
+  addCircles(data = pr, label = prlab, color = 'purple')
 
-# change? maybe 2010 - 2017
+# change? maybe 2010 - 2017 ---------------------
+
+#dt workers in 2010
+dtw10 <- ods[year == 2010 & w_bg %in% dtbgs]
+dtw10[, dtworkers10 := sum(workers), by = 'h_bg']
+dtw10 <- unique(dtw10[, c('dtworkers10', 'h_bg')])
+dtw <- unique(dtw[, c('dtworkers', 'h_bg')])
+
+dtwc <- dtw10[dtw, on = 'h_bg']
+dtwc[, change := dtworkers - dtworkers10]
+
+dtw_change <- left_join(allbg, dtwc, by = c('GEOID' = 'h_bg'))
+
+changepal <- colorNumeric(palette = 'RdBu', domain = c(-6.5, 6.5), na.color = 'transparent')
+changelab <- sprintf(
+  "Change in downtown workers 2010-2017: <strong> %s </strong>",
+  dtw_change$change
+) %>% lapply(htmltools::HTML)
+
+leaflet(dtw_change) %>% addTiles() %>%
+  addPolygons(weight = 1, color = 'grey', fillColor = ~changepal(sign(change) * log(abs(change))),
+              fillOpacity = 0.7, label = changelab) %>%
+  addCircles(data = pr, label = prlab, color = 'purple', radius = 1)
