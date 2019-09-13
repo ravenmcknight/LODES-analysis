@@ -1,0 +1,57 @@
+---
+title: "Dowtown Commuter Market"
+author: "Raven McKnight"
+date: "9/13/2019"
+output:
+    MetroTransitr::metro_html: default
+    MetroTransitr::metro_report: default
+---
+<style type="text/css">
+html {
+  max-width: 10.5in;
+  margin: 1.25in 0.75in;
+  font-family: "Calibri", helvetica, sans-serif;
+  font-size: 11pt;
+}
+
+body { width: 8.5in;
+       max-width: 10.5in;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(data.table)
+library(ggplot2)
+library(tigris)
+library(sf)
+library(leaflet)
+library(dplyr)
+library(htmltools)
+library(rgdal)
+
+tot <- readRDS('data/tot_jobs.RDS')
+
+tot_ys <- tot[, .(workers = sum(workers)), by = year]
+
+options(tigris_class = 'sf')
+counties <- c('Anoka', 'Carver', 'Dakota', 'Hennepin', 'Ramsey', 'Scott', 'Washington')
+bgs <- block_groups('MN', counties, year = 2016)
+
+bgs <- st_transform(bgs, 4326)
+```
+
+# Total downtown jobs
+
+# Change in downtown jobs
+
+# Downtown employee origins
+
+# Change in downtown employee origins
+
+# Next steps
+
+* Filtering to isolate more specific block groups - ie, places that aren't already served? Places where new/expanded P&R might be necessary?
+* Put O-D data into an app (like the Streetlight O-D app)?
