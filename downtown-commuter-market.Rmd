@@ -33,25 +33,155 @@ library(htmltools)
 library(rgdal)
 
 tot <- readRDS('data/tot_jobs.RDS')
+ods <- readRDS('data/od_jobs.RDS')
 
 tot_ys <- tot[, .(workers = sum(workers)), by = year]
 
 options(tigris_class = 'sf')
+options(tigris_use_cache = FALSE)
 counties <- c('Anoka', 'Carver', 'Dakota', 'Hennepin', 'Ramsey', 'Scott', 'Washington')
 bgs <- block_groups('MN', counties, year = 2016)
 
 bgs <- st_transform(bgs, 4326)
+
+# downtown area
+dt <- st_bbox(c(xmin = -93.286377, ymin = 44.966869, xmax = -93.245903, ymax = 44.986271))
+dt <- st_as_sfc(dt, crs = 4326)
+st_crs(dt) <- 4326
+dt <- st_sf(dt)
+
+# this is so messy but best i have right now
+dtbg <- st_intersection(bgs, dt)
+dtbgs <- unique(dtbg$GEOID)
+dtbg <- bgs %>% filter(GEOID %in% dtbgs)
+
 ```
 
 # Total downtown jobs
 
+This map shows total jobs in the downtown Minneapolis area in 2017. Colors are logged, labels show unlogged values. **This shape/area might need to be adjusted to better reflect what we consider 'broader downtown'**. 
+```{r}
+# total jobs in 2017 ------------------
+tot_17 <- tot[year == 2017][, .(workers = sum(workers)), by = w_bg]
+
+bg_tot_17 <- left_join(dtbg, tot_17, by = c('GEOID' = 'w_bg'))
+
+emp2017pal <- colorNumeric(palette = 'YlGnBu', domain = log(bg_tot_17$workers))
+emp2017labs <- sprintf(
+  "<strong> %s </strong> jobs in 2017",
+  bg_tot_17$workers
+) %>% lapply(htmltools::HTML)
+
+leaflet(bg_tot_17) %>% addTiles() %>%
+  addPolygons(weight = 1, color = 'grey', fillColor = ~emp2017pal(log(workers)), 
+              fillOpacity = 0.7, label = emp2017labs)
+```
+
+
 # Change in downtown jobs
+This map shows the *change* in jobs from 2010-2017 in the same extent. 
+```{r}
+# change 2010-2017
+tot_10 <- tot[year == 2010][, .(workers10 = sum(workers)), by = w_bg]
+change_10_17 <- tot_10[tot_17, on = 'w_bg']
+change_10_17[, change := workers - workers10]
+change_10_17[, logchange := sign(change)*log(abs(change))]
+
+change_10_17 <- left_join(dtbg, change_10_17, by = c('GEOID' = 'w_bg'))
+
+change1017pal <- colorNumeric(palette = 'RdBu', domain = c(-10.1, 10.1))
+change1017labs <- sprintf(
+  "Block group ID: %s <br> Change in jobs 2010-2017: <strong> %s </strong>",
+  change_10_17$GEOID, change_10_17$change
+) %>% lapply(htmltools::HTML)
+
+leaflet(change_10_17) %>% addTiles() %>%
+  addPolygons(weight = 1, color = 'grey', fillColor = ~change1017pal(logchange),
+              fillOpacity = 0.7, label = change1017labs)
+```
 
 # Downtown employee origins
 
+This map shows the origins of employees who work in the region above in 2017. There are lots of counties much further away with 1-3 employees listed but I'm guessing those people are, for the most part, not actually commuting daily. I included existing park & ride lots as well. 
+```{r}
+dtw <- ods[year == 2017 & w_bg %in% dtbgs]
+dtw[, dtworkers := sum(workers), by = 'h_bg']
+
+# maybe overboard but i want context for the p&rs
+empcounties <- c('Sherburne', 'Wright', 'Chisago', 'Isanti', 'Le Sueur', 'Mille Lacs', 
+                 'Sibley', 'Stearns', 'Meeker', 'Benton', 'McLeod', 'Morrison', 
+                 'Todd', 'Kanabec', 'Pine', 'Nicollet', 'Rice', 'Goodhue')
+wicounties <- c('St. Croix', 'Pierce', 'Pepin', 'Eau Clair', 'Dunn', 'Chippewa', 
+                'Polk', 'Barron', 'Burnett', 'Buffalo', 'Trempealeau')
+
+empbg <- block_groups('MN', county = empcounties, year = 2016)
+wibg <- block_groups('WI', county = wicounties, year = 2016)
+
+empbg <- st_transform(empbg, 4326)
+wibg <- st_transform(wibg, 4326)
+
+allbg <- rbind_tigris(empbg, wibg, bgs)
+  
+dtw_origins <- left_join(allbg, dtw, by = c('GEOID' = 'h_bg'))
+
+# p&r -----------------------
+prurl <- 'ftp://ftp.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_state_metc/trans_park_and_ride_lots/shp_trans_park_and_ride_lots.zip'
+loc <- file.path(tempdir(), 'pr.zip')
+download.file(prurl, loc)
+unzip(loc, exdir = file.path(tempdir(), 'pr'), overwrite = TRUE)
+file.remove(loc)
+pr <- readOGR(file.path(tempdir(), 'pr'), layer = 'ParkAndRideLots', stringsAsFactors = FALSE)
+pr <- st_as_sf(pr)
+pr <- st_transform(pr, 4326)
+
+# active only
+pr <- pr %>% filter(Active == 1)
+
+originpal <- colorNumeric(palette = 'YlGnBu', domain = c(0, 7), na.color = 'transparent')
+originlab <- sprintf(
+  "<strong> %s </strong> downtown workers in 2017",
+  dtw_origins$dtworkers
+) %>% lapply(htmltools::HTML)
+
+prlab <- sprintf(
+  "<strong> %s </strong> <br> %s",
+  pr$Name, pr$PrPlRec
+) %>% lapply(htmltools::HTML)
+
+leaflet(dtw_origins) %>% addTiles() %>%
+  addPolygons(weight = 1, color = 'grey', fillColor = ~originpal(log(dtworkers)),
+              fillOpacity = 0.7, label = originlab) %>%
+  addCircles(data = pr, label = prlab, color = 'purple')
+```
+
+
 # Change in downtown employee origins
+Finally, this map shows the change in the origins above from 2010-2017. 
+```{r}
+dtw10 <- ods[year == 2010 & w_bg %in% dtbgs]
+dtw10[, dtworkers10 := sum(workers), by = 'h_bg']
+dtw10 <- unique(dtw10[, c('dtworkers10', 'h_bg')])
+dtw <- unique(dtw[, c('dtworkers', 'h_bg')])
+
+dtwc <- dtw10[dtw, on = 'h_bg']
+dtwc[, change := dtworkers - dtworkers10]
+
+dtw_change <- left_join(allbg, dtwc, by = c('GEOID' = 'h_bg'))
+
+changepal <- colorNumeric(palette = 'RdBu', domain = c(-6.5, 6.5), na.color = 'transparent')
+changelab <- sprintf(
+  "Change in downtown workers 2010-2017: <strong> %s </strong>",
+  dtw_change$change
+) %>% lapply(htmltools::HTML)
+
+leaflet(dtw_change) %>% addTiles() %>%
+  addPolygons(weight = 1, color = 'grey', fillColor = ~changepal(sign(change) * log(abs(change))),
+              fillOpacity = 0.7, label = changelab) %>%
+  addCircles(data = pr, label = prlab, color = 'purple', radius = 1)
+```
+
 
 # Next steps
 
-* Filtering to isolate more specific block groups - ie, places that aren't already served? Places where new/expanded P&R might be necessary?
+* Filtering to isolate more specific origin block groups - ie, places that aren't already served? Places where new/expanded P&R may be necessary?
 * Put O-D data into an app (like the Streetlight O-D app)?
