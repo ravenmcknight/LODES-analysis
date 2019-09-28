@@ -1,3 +1,7 @@
+## Goal: Parse LEHD Origin-Destination Employment data for use in Urban GIS
+
+# this document is fully reproducible - anyone with R can run this and get the data we're using for the project
+
 ## packages -----------------------------------------------
 
 # these lines make sure any user has all the necessary packages
@@ -15,57 +19,47 @@ rm(miss_pkgs, packages)
 
 ## data ---------------------------------------------------
 
-# this section downloads all of the LODES files from the census website
-# this way we don't have to download them individually 
-# and any user can run this
-# if we just want the most recent year, this step gets much simpler and we can look just at 2017
+# this section downloads all of the LODES files we want from the website
 
-years <- c('2002', '2003', '2004', '2005', '2006', '2007', '2008', '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016', '2017')
+# here, we download data from 2010-2017 for people who live & work in Minnesota
+
+years <- c('2010', '2011', '2012', '2013', '2014', '2015', '2016', '2017')
 
 urls <- c()
 for (y in years){
-  url1 <- paste0('https://lehd.ces.census.gov/data/lodes/LODES7/mn/od/mn_od_main_JT00_', y, '.csv.gz') # live in state
-  url2 <- paste0('https://lehd.ces.census.gov/data/lodes/LODES7/mn/od/mn_od_aux_JT00_', y, '.csv.gz') # live out of state
-  urls <- rbind(urls, url1, url2)
+  url <- paste0('https://lehd.ces.census.gov/data/lodes/LODES7/mn/od/mn_od_main_JT00_', y, '.csv.gz') # live in state
+  urls <- rbind(urls, url)
 }
 
-years2 <- rep(years, each = 2)
-
 for (i in 1:length(urls)){
-  if (urls[i] %like% 'main'){
-    dest <- paste0('data/', years2[i], '.csv.gz')
-    download.file(urls[i, ], dest)
-  }
-  else{
-    dest <- paste0('data/', years2[i], '_aux.csv.gz')
-    download.file(urls[i, ], dest)
-  }
+  dest <- paste0('data/gis-data/raw-', years[i], '.csv.gz')
+  download.file(urls[i, ], dest)
 }
 
 # read files --------------------------
-files <- list.files(path = 'data/')
-l <- lapply(paste0('data/', files), fread)  # this should be more elegant but alas
+files <- list.files(path = 'data/gis-data/')
+l <- lapply(paste0('data/gis-data/', files), fread)
 
 for (i in 1:length(l)){
-  l[[i]]$year <- years2[i]
+  l[[i]]$year <- years[i]
 }
 
+# saving it as one large object now so I can clean it all at once
 dt <- rbindlist(l)
 
 # save raw data since it's so big so we don't have to run this again
 # you can also save as a csv or xlsx 
-saveRDS(dt, 'data/raw_data.RDS')
+saveRDS(dt, 'data/gis-data/raw_data.RDS')
 
 ## cleaning ------------------------------------------------
 
-# this is the part we might have to change to work better for the GIS project
+# here, we'll use the tigris package to get census block groups
 
-# restrict to jobs in metro area
-# if you haven't used tigris to work with census shapefiles i strongly recommend
 options(tigris_class = 'sf')
-counties <- c('Anoka', 'Hennepin', 'Ramsey', 'Carver', 'Washington', 'Scott', 'Sherburne', 'Wright', 'Dakota')
+counties <- c('Anoka', 'Hennepin', 'Ramsey', 'Carver', 'Washington', 'Scott', 'Dakota')
 bs <- blocks(state = 'MN', county = counties, year = 2016)
 
+# this bit restricts to jobs in the 7 county metro (we'll focus mostly on Hennepin and Ramsey)
 dt$GEOID10 <- as.character(dt$w_geocode)
 dt <- dt[GEOID10 %in% bs$GEOID10] # this is data.table instead of dplyr but could also be done with %>% filter()
 
@@ -73,15 +67,28 @@ dt <- dt[GEOID10 %in% bs$GEOID10] # this is data.table instead of dplyr but coul
 saveRDS(dt, 'data/metro_area_jobs.RDS')
 
 dt <- readRDS('data/metro_area_jobs.RDS')
+setDT(dt)
 
 # aggregate to block groups using data.table
-# easy to skip if we want more granularity
 dt[, w_bg := substr(as.character(w_geocode), 1, 12)]
 dt[, h_bg := substr(as.character(h_geocode), 1, 12)]
 
-od_counts <- dt[, .(workers = sum(S000)), by = c('w_bg', 'h_bg', 'year')][order(-workers)]
+# now we sum the columns by home block group, work block group and year
+
+od_counts <- dt[, .(tot_workers = sum(S000), wage_1250 = sum(SE01), wage_1250_3333 = sum(SE02),
+                    wage_333 = sum(SE03), age_29 = sum(SA01), age_30_54 = sum(SA02), 
+                    age_55 = sum(SA03), ind_goods = sum(SI01), ind_trade = sum(SE02),
+                    ind_other = sum(SI03)), by = c('w_bg', 'h_bg', 'year')]
 
 saveRDS(od_counts, 'data/od_jobs.RDS')
 
 # so od_jobs has counts of origin and destination for each block group in the metro area by year
-# we can restrict to employees with origins in Saint Paul in R or GIS
+
+# Export lots of csvs -------------------------------------
+
+# export 1 csv per year (we can do spatial restrictions in GIS
+# just change the date if you re-run
+
+for (y in years){
+  fwrite(od_counts[year == y], paste0('data/gis-data/od-jobs_mn_bgs_', y, '_092719_rm.csv'))
+}
