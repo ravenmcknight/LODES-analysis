@@ -71,3 +71,4 @@ saveRDS(od_counts, 'ts-data/od_jobs.RDS')
 
 tot_counts <- dt[, .(workers = sum(S000)), by = c('w_geocode', 'year')][order(-workers)]
 saveRDS(tot_counts, 'ts-data/tot_jobs.RDS')
+

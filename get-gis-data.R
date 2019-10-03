@@ -92,3 +92,48 @@ saveRDS(od_counts, 'data/od_jobs.RDS')
 for (y in years){
   fwrite(od_counts[year == y], paste0('data/gis-data/od-jobs_mn_bgs_', y, '_092719_rm.csv'))
 }
+
+
+## get RAC data -------------------------------------------
+
+# residence area characteristics
+# segment = S000 are all workers, SA01 is workers under 29 (likely to be young parents)
+# type = JT00 is all jobs
+# year = most recent year
+
+rac_urls <- c('https://lehd.ces.census.gov/data/lodes/LODES7/mn/rac/mn_rac_S000_JT00_2017.csv.gz',
+              'https://lehd.ces.census.gov/data/lodes/LODES7/mn/rac/mn_rac_SA01_JT00_2017.csv.gz')
+
+for(i in 1:length(rac_urls)){
+  download.file(rac_urls[i], paste0('rac-data/mn_rac_2017_', i, '.csv.gz'))
+}
+
+rac_files <- list.files(path = 'rac-data/')
+l <- lapply(paste0('rac-data/', rac_files), fread)
+
+l[[1]]$type <- 'S000'
+l[[2]]$type <- 'SA01'
+
+colnames(l[[1]]) <- c('h_geocode', 'tot_jobs', 'age_29', 'age_30_54', 'age_55',
+                      'wage_1250', 'wage_1250_3333', 'wage_3333', 'ag', 'mining',
+                      'utils', 'construction', 'manuf', 'whole_trade', 'ret_trade',
+                      'transp', 'info', 'finance', 'real_estate', 'prof_serv', 
+                      'manage', 'admin', 'educ', 'health', 'arts', 'ac_food', 
+                      'other', 'pub_admin', 'white_alone', 'black', 'amind', 
+                      'asian', 'native', 'two_or_more', 'not_hisp', 'hisp', 
+                      'less_than_hs', 'hs', 'some_college', 'degree', 'male', 'female', 
+                      'createdate', 'type')
+
+colnames(l[[2]]) <- c('h_geocode', 'tot_jobs', 'age_29', 'age_30_54', 'age_55',
+                      'wage_1250', 'wage_1250_3333', 'wage_3333', 'ag', 'mining',
+                      'utils', 'construction', 'manuf', 'whole_trade', 'ret_trade',
+                      'transp', 'info', 'finance', 'real_estate', 'prof_serv', 
+                      'manage', 'admin', 'educ', 'health', 'arts', 'ac_food', 
+                      'other', 'pub_admin', 'white_alone', 'black', 'amind', 
+                      'asian', 'native', 'two_or_more', 'not_hisp', 'hisp', 
+                      'less_than_hs', 'hs', 'some_college', 'degree', 'male', 'female', 
+                      'createdate', 'type')
+
+
+fwrite(l[[1]], 'rac-data/mn_rac_S000_JT00_2017.csv')
+fwrite(l[[2]], 'rac-data/mn_rac_SA01_JT00_2017.csv')
